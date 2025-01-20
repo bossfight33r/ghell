@@ -2,47 +2,43 @@ package shell
 
 import "strings"
 
-// command is a single executable unit: args + optional redirection targets.
 type command struct {
-	args       []string // argv[0] is the program name
-	inputFile  string   // path for stdin redirection  (<)
-	outputFile string   // path for stdout redirection (>)
-	appendFile string   // path for stdout append      (>>)
+	args    []string
+	inFile  string
+	outFile string
+	appFile string
 }
 
-// parseCommand converts a single-stage string (no pipes) into a command.
-// It handles the redirection operators <, >, and >>.
 func parseCommand(raw string) command {
 	tokens := strings.Fields(raw)
-	cmd := command{}
+	var cmd command
 
 	i := 0
 	for i < len(tokens) {
-		tok := tokens[i]
-		switch tok {
+		switch tokens[i] {
 		case ">":
 			if i+1 < len(tokens) {
-				cmd.outputFile = tokens[i+1]
+				cmd.outFile = tokens[i+1]
 				i += 2
 			} else {
 				i++
 			}
 		case ">>":
 			if i+1 < len(tokens) {
-				cmd.appendFile = tokens[i+1]
+				cmd.appFile = tokens[i+1]
 				i += 2
 			} else {
 				i++
 			}
 		case "<":
 			if i+1 < len(tokens) {
-				cmd.inputFile = tokens[i+1]
+				cmd.inFile = tokens[i+1]
 				i += 2
 			} else {
 				i++
 			}
 		default:
-			cmd.args = append(cmd.args, tok)
+			cmd.args = append(cmd.args, tokens[i])
 			i++
 		}
 	}
@@ -50,16 +46,13 @@ func parseCommand(raw string) command {
 	return cmd
 }
 
-// splitPipeline splits an input line on unquoted '|' characters.
-// Proper quote handling is left as a future exercise — this naive version
-// splits on every '|'.
 func splitPipeline(input string) []string {
-	var stages []string
+	var out []string
 	for _, s := range strings.Split(input, "|") {
-		stage := strings.TrimSpace(s)
-		if stage != "" {
-			stages = append(stages, stage)
+		s = strings.TrimSpace(s)
+		if s != "" {
+			out = append(out, s)
 		}
 	}
-	return stages
+	return out
 }

@@ -7,61 +7,53 @@ import (
 	"os/exec"
 )
 
-// runSingle runs one command (no pipeline) with optional I/O redirection.
 func (s *Shell) runSingle(raw string) error {
 	cmd := parseCommand(raw)
 	if len(cmd.args) == 0 {
 		return nil
 	}
 
-	// Check built-ins first.
 	if ok, err := s.tryBuiltin(cmd.args); ok {
 		return err
 	}
 
-	return s.runExternal(cmd, os.Stdin, os.Stdout)
+	return s.runCmd(cmd, os.Stdin, os.Stdout)
 }
 
-// runExternal forks an external process, wiring up the supplied stdin/stdout.
-// Explicit redirection in the command struct takes precedence over the passed
-// readers/writers.
-func (s *Shell) runExternal(cmd command, stdin io.Reader, stdout io.Writer) error {
-	c := exec.Command(cmd.args[0], cmd.args[1:]...)
-	c.Stderr = os.Stderr
+func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
+	p := exec.Command(cmd.args[0], cmd.args[1:]...)
+	p.Stderr = os.Stderr
 
-	// --- stdin ---
-	if cmd.inputFile != "" {
-		f, err := os.Open(cmd.inputFile)
+	if cmd.inFile != "" {
+		f, err := os.Open(cmd.inFile)
 		if err != nil {
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
-		c.Stdin = f
+		p.Stdin = f
 	} else {
-		c.Stdin = stdin
+		p.Stdin = stdin
 	}
 
-	// --- stdout ---
-	if cmd.outputFile != "" {
-		f, err := os.Create(cmd.outputFile)
+	if cmd.outFile != "" {
+		f, err := os.Create(cmd.outFile)
 		if err != nil {
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
-		c.Stdout = f
-	} else if cmd.appendFile != "" {
-		f, err := os.OpenFile(cmd.appendFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		p.Stdout = f
+	} else if cmd.appFile != "" {
+		f, err := os.OpenFile(cmd.appFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
-		c.Stdout = f
+		p.Stdout = f
 	} else {
-		c.Stdout = stdout
+		p.Stdout = stdout
 	}
 
-	if err := c.Run(); err != nil {
-		// Exit errors are normal (e.g. grep finds nothing → exit 1).
+	if err := p.Run(); err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			return nil
 		}

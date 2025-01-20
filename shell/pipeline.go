@@ -6,19 +6,12 @@ import (
 	"os/exec"
 )
 
-// runPipeline connects multiple commands via in-memory pipes.
-//
-//	ls -la | grep go | wc -l
-//
-// Each stage's stdout becomes the next stage's stdin. The first stage reads
-// from os.Stdin and the last stage writes to os.Stdout.
 func (s *Shell) runPipeline(stages []string) error {
 	cmds := make([]command, len(stages))
 	for i, stage := range stages {
 		cmds[i] = parseCommand(stage)
 	}
 
-	// Build the chain of os.Pipe() pairs.
 	readers := make([]*os.File, len(cmds))
 	writers := make([]*os.File, len(cmds))
 
@@ -31,89 +24,82 @@ func (s *Shell) runPipeline(stages []string) error {
 		writers[i-1] = w
 		readers[i] = r
 	}
-	writers[len(cmds)-1] = nil // last stage writes to os.Stdout
+	writers[len(cmds)-1] = nil
 
-	// Build and start all processes.
 	procs := make([]*exec.Cmd, len(cmds))
-	closeAfterStart := make([]*os.File, 0, len(cmds)*2)
+	var toClose []*os.File
 
 	for i, cmd := range cmds {
 		if len(cmd.args) == 0 {
 			continue
 		}
 
-		// Built-ins in a pipeline are not supported in this version.
 		if ok, _ := s.tryBuiltin(cmd.args); ok {
-			fmt.Fprintf(os.Stderr, "built-ins inside pipelines are not supported\n")
+			fmt.Fprintln(os.Stderr, "builtins in pipelines not supported")
 			continue
 		}
 
-		c := exec.Command(cmd.args[0], cmd.args[1:]...)
-		c.Stderr = os.Stderr
+		p := exec.Command(cmd.args[0], cmd.args[1:]...)
+		p.Stderr = os.Stderr
 
-		// stdin
-		if cmd.inputFile != "" && i == 0 {
-			f, err := os.Open(cmd.inputFile)
+		if cmd.inFile != "" && i == 0 {
+			f, err := os.Open(cmd.inFile)
 			if err != nil {
 				return fmt.Errorf("%s: %w", cmd.args[0], err)
 			}
-			closeAfterStart = append(closeAfterStart, f)
-			c.Stdin = f
+			toClose = append(toClose, f)
+			p.Stdin = f
 		} else {
-			c.Stdin = readers[i]
+			p.Stdin = readers[i]
 			if readers[i] != os.Stdin {
-				closeAfterStart = append(closeAfterStart, readers[i])
+				toClose = append(toClose, readers[i])
 			}
 		}
 
-		// stdout
-		if cmd.outputFile != "" && i == len(cmds)-1 {
-			f, err := os.Create(cmd.outputFile)
+		if cmd.outFile != "" && i == len(cmds)-1 {
+			f, err := os.Create(cmd.outFile)
 			if err != nil {
 				return fmt.Errorf("%s: %w", cmd.args[0], err)
 			}
-			closeAfterStart = append(closeAfterStart, f)
-			c.Stdout = f
-		} else if cmd.appendFile != "" && i == len(cmds)-1 {
-			f, err := os.OpenFile(cmd.appendFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			toClose = append(toClose, f)
+			p.Stdout = f
+		} else if cmd.appFile != "" && i == len(cmds)-1 {
+			f, err := os.OpenFile(cmd.appFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf("%s: %w", cmd.args[0], err)
 			}
-			closeAfterStart = append(closeAfterStart, f)
-			c.Stdout = f
+			toClose = append(toClose, f)
+			p.Stdout = f
 		} else if writers[i] != nil {
-			c.Stdout = writers[i]
-			closeAfterStart = append(closeAfterStart, writers[i])
+			p.Stdout = writers[i]
+			toClose = append(toClose, writers[i])
 		} else {
-			c.Stdout = os.Stdout
+			p.Stdout = os.Stdout
 		}
 
-		procs[i] = c
+		procs[i] = p
 	}
 
-	// Start all processes.
-	for _, c := range procs {
-		if c == nil {
+	for _, p := range procs {
+		if p == nil {
 			continue
 		}
-		if err := c.Start(); err != nil {
-			return fmt.Errorf("%s: %w", c.Path, err)
+		if err := p.Start(); err != nil {
+			return fmt.Errorf("%s: %w", p.Path, err)
 		}
 	}
 
-	// Close the pipe ends that belong to the parent so children get EOF.
-	for _, f := range closeAfterStart {
+	for _, f := range toClose {
 		f.Close()
 	}
 
-	// Wait for all processes.
-	for _, c := range procs {
-		if c == nil {
+	for _, p := range procs {
+		if p == nil {
 			continue
 		}
-		if err := c.Wait(); err != nil {
+		if err := p.Wait(); err != nil {
 			if _, ok := err.(*exec.ExitError); !ok {
-				return fmt.Errorf("%s: %w", c.Path, err)
+				return fmt.Errorf("%s: %w", p.Path, err)
 			}
 		}
 	}
