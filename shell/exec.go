@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 func (s *Shell) runSingle(raw string) error {
@@ -54,7 +55,10 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 	}
 
 	if err := p.Run(); err != nil {
-		if _, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+				fmt.Println()
+			}
 			return nil
 		}
 		return fmt.Errorf("%s: %w", cmd.args[0], err)

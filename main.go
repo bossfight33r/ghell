@@ -9,6 +9,8 @@ import (
 )
 
 func main() {
+	shell.Init()
+
 	sh := shell.New()
 	r := bufio.NewReader(os.Stdin)
 

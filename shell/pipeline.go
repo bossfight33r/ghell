@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 func (s *Shell) runPipeline(stages []string) error {
@@ -98,7 +99,11 @@ func (s *Shell) runPipeline(stages []string) error {
 			continue
 		}
 		if err := p.Wait(); err != nil {
-			if _, ok := err.(*exec.ExitError); !ok {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+					fmt.Println()
+				}
+			} else {
 				return fmt.Errorf("%s: %w", p.Path, err)
 			}
 		}
