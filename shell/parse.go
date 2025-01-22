@@ -9,7 +9,7 @@ type command struct {
 	appFile string
 }
 
-func parseCommand(raw string) command {
+func (s *Shell) parseCommand(raw string) command {
 	tokens := strings.Fields(raw)
 	var cmd command
 
@@ -18,27 +18,27 @@ func parseCommand(raw string) command {
 		switch tokens[i] {
 		case ">":
 			if i+1 < len(tokens) {
-				cmd.outFile = tokens[i+1]
+				cmd.outFile = s.expand(tokens[i+1])
 				i += 2
 			} else {
 				i++
 			}
 		case ">>":
 			if i+1 < len(tokens) {
-				cmd.appFile = tokens[i+1]
+				cmd.appFile = s.expand(tokens[i+1])
 				i += 2
 			} else {
 				i++
 			}
 		case "<":
 			if i+1 < len(tokens) {
-				cmd.inFile = tokens[i+1]
+				cmd.inFile = s.expand(tokens[i+1])
 				i += 2
 			} else {
 				i++
 			}
 		default:
-			cmd.args = append(cmd.args, tokens[i])
+			cmd.args = append(cmd.args, s.expand(tokens[i]))
 			i++
 		}
 	}

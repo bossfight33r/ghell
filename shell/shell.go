@@ -6,8 +6,10 @@ import (
 )
 
 type Shell struct {
-	cwd  string
-	hist []string
+	cwd    string
+	hist   []string
+	env    map[string]string
+	lastRC int
 }
 
 func New() *Shell {
@@ -15,7 +17,10 @@ func New() *Shell {
 	if err != nil {
 		cwd = "?"
 	}
-	return &Shell{cwd: cwd}
+	return &Shell{
+		cwd: cwd,
+		env: make(map[string]string),
+	}
 }
 
 func (s *Shell) Cwd() string {
@@ -29,6 +34,13 @@ func (s *Shell) Execute(input string) error {
 	}
 
 	s.hist = append(s.hist, input)
+
+	if isAssignment(input) {
+		parts := strings.SplitN(input, "=", 2)
+		s.env[parts[0]] = s.expand(parts[1])
+		s.lastRC = 0
+		return nil
+	}
 
 	stages := splitPipeline(input)
 	if len(stages) == 1 {
