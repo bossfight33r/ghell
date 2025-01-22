@@ -10,7 +10,7 @@ import (
 func (s *Shell) runPipeline(stages []string) error {
 	cmds := make([]command, len(stages))
 	for i, stage := range stages {
-		cmds[i] = parseCommand(stage)
+		cmds[i] = s.parseCommand(stage)
 	}
 
 	readers := make([]*os.File, len(cmds))
@@ -94,18 +94,25 @@ func (s *Shell) runPipeline(stages []string) error {
 		f.Close()
 	}
 
-	for _, p := range procs {
+	for i, p := range procs {
 		if p == nil {
 			continue
 		}
 		if err := p.Wait(); err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-					fmt.Println()
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+					if status.Signaled() {
+						fmt.Println()
+					}
+					if i == len(procs)-1 {
+						s.lastRC = status.ExitStatus()
+					}
 				}
 			} else {
 				return fmt.Errorf("%s: %w", p.Path, err)
 			}
+		} else if i == len(procs)-1 {
+			s.lastRC = 0
 		}
 	}
 

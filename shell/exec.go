@@ -9,7 +9,7 @@ import (
 )
 
 func (s *Shell) runSingle(raw string) error {
-	cmd := parseCommand(raw)
+	cmd := s.parseCommand(raw)
 	if len(cmd.args) == 0 {
 		return nil
 	}
@@ -28,6 +28,7 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 	if cmd.inFile != "" {
 		f, err := os.Open(cmd.inFile)
 		if err != nil {
+			s.lastRC = 1
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
@@ -39,6 +40,7 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 	if cmd.outFile != "" {
 		f, err := os.Create(cmd.outFile)
 		if err != nil {
+			s.lastRC = 1
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
@@ -46,6 +48,7 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 	} else if cmd.appFile != "" {
 		f, err := os.OpenFile(cmd.appFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
+			s.lastRC = 1
 			return fmt.Errorf("%s: %w", cmd.args[0], err)
 		}
 		defer f.Close()
@@ -56,12 +59,20 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 
 	if err := p.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
-				fmt.Println()
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+				if status.Signaled() {
+					fmt.Println()
+					s.lastRC = 128 + int(status.Signal())
+				} else {
+					s.lastRC = status.ExitStatus()
+				}
 			}
 			return nil
 		}
+		s.lastRC = 1
 		return fmt.Errorf("%s: %w", cmd.args[0], err)
 	}
+
+	s.lastRC = 0
 	return nil
 }
