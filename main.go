@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 
+	"github.com/chzyer/readline"
 	"github.com/ivan/ghell/shell"
 )
 
@@ -12,12 +13,24 @@ func main() {
 	shell.Init()
 
 	sh := shell.New()
-	r := bufio.NewReader(os.Stdin)
+
+	rl, err := readline.New("")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer rl.Close()
 
 	for {
-		fmt.Printf("%s $ ", sh.Cwd())
+		rl.SetPrompt(sh.Cwd() + " $ ")
 
-		line, err := r.ReadString('\n')
+		line, err := rl.Readline()
+		if err == readline.ErrInterrupt {
+			continue
+		}
+		if err == io.EOF {
+			os.Exit(0)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			continue
