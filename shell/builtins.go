@@ -22,6 +22,10 @@ func (s *Shell) tryBuiltin(args []string) (bool, error) {
 		err := s.export(args[1:])
 		s.setRC(err)
 		return true, err
+	case "jobs":
+		s.jstore.list()
+		s.lastRC = 0
+		return true, nil
 	case "history":
 		return true, s.history()
 	case "pwd":

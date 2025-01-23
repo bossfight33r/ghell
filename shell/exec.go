@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func (s *Shell) runSingle(raw string) error {
+func (s *Shell) runSingle(raw string, bg bool) error {
 	cmd := s.parseCommand(raw)
 	if len(cmd.args) == 0 {
 		return nil
@@ -18,10 +18,10 @@ func (s *Shell) runSingle(raw string) error {
 		return err
 	}
 
-	return s.runCmd(cmd, os.Stdin, os.Stdout)
+	return s.runCmd(cmd, os.Stdin, os.Stdout, bg)
 }
 
-func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
+func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer, bg bool) error {
 	p := exec.Command(cmd.args[0], cmd.args[1:]...)
 	p.Stderr = os.Stderr
 
@@ -55,6 +55,21 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer) error {
 		p.Stdout = f
 	} else {
 		p.Stdout = stdout
+	}
+
+	if bg {
+		if err := p.Start(); err != nil {
+			s.lastRC = 1
+			return fmt.Errorf("%s: %w", cmd.args[0], err)
+		}
+		id := s.jstore.add(cmd.args[0], p.Process.Pid)
+		fmt.Printf("[%d] %d\n", id, p.Process.Pid)
+		go func() {
+			p.Wait()
+			s.jstore.remove(id)
+			fmt.Printf("[%d]+ Done\t%s\n", id, cmd.args[0])
+		}()
+		return nil
 	}
 
 	if err := p.Run(); err != nil {

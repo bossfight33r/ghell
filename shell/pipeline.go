@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
-func (s *Shell) runPipeline(stages []string) error {
+func (s *Shell) runPipeline(stages []string, bg bool) error {
 	cmds := make([]command, len(stages))
 	for i, stage := range stages {
 		cmds[i] = s.parseCommand(stage)
@@ -92,6 +93,22 @@ func (s *Shell) runPipeline(stages []string) error {
 
 	for _, f := range toClose {
 		f.Close()
+	}
+
+	if bg {
+		label := strings.Join(stages, " | ")
+		id := s.jstore.add(label, procs[0].Process.Pid)
+		fmt.Printf("[%d] %d\n", id, procs[len(procs)-1].Process.Pid)
+		go func() {
+			for _, p := range procs {
+				if p != nil {
+					p.Wait()
+				}
+			}
+			s.jstore.remove(id)
+			fmt.Printf("[%d]+ Done\t%s\n", id, label)
+		}()
+		return nil
 	}
 
 	for i, p := range procs {
