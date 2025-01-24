@@ -14,7 +14,9 @@ func main() {
 
 	sh := shell.New()
 
-	rl, err := readline.New("")
+	rl, err := readline.NewEx(&readline.Config{
+		AutoComplete: sh.Completer(),
+	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
