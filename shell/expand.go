@@ -8,6 +8,17 @@ import (
 )
 
 func (s *Shell) expand(token string) string {
+	if token == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(token, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + token[1:]
+		}
+	}
+
 	if !strings.ContainsRune(token, '$') {
 		return token
 	}
