@@ -16,18 +16,25 @@ func (s *Shell) tryBuiltin(args []string) (bool, error) {
 		return true, ErrExit
 	case "cd":
 		err := s.cd(args[1:])
-		s.setRC(err)
+		s.lastRC = 0
+		if err != nil {
+			s.lastRC = 1
+		}
 		return true, err
 	case "export":
-		err := s.export(args[1:])
-		s.setRC(err)
-		return true, err
+		s.export(args[1:])
+		s.lastRC = 0
+		return true, nil
 	case "jobs":
 		s.jstore.list()
 		s.lastRC = 0
 		return true, nil
 	case "history":
-		return true, s.history()
+		for i, c := range s.hist {
+			fmt.Printf("%4d  %s\n", i+1, c)
+		}
+		s.lastRC = 0
+		return true, nil
 	case "pwd":
 		fmt.Println(s.cwd)
 		s.lastRC = 0
@@ -37,17 +44,8 @@ func (s *Shell) tryBuiltin(args []string) (bool, error) {
 	return false, nil
 }
 
-func (s *Shell) setRC(err error) {
-	if err != nil {
-		s.lastRC = 1
-	} else {
-		s.lastRC = 0
-	}
-}
-
 func (s *Shell) cd(args []string) error {
 	var target string
-
 	switch len(args) {
 	case 0:
 		home, err := os.UserHomeDir()
@@ -65,18 +63,9 @@ func (s *Shell) cd(args []string) error {
 		return fmt.Errorf("cd: too many args")
 	}
 
-	if strings.HasPrefix(target, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		target = home + target[1:]
-	}
-
 	if err := os.Chdir(target); err != nil {
 		return fmt.Errorf("cd: %s", err)
 	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -85,25 +74,17 @@ func (s *Shell) cd(args []string) error {
 	return nil
 }
 
-func (s *Shell) export(args []string) error {
+func (s *Shell) export(args []string) {
 	for _, arg := range args {
-		if idx := strings.IndexByte(arg, '='); idx > 0 {
-			key := arg[:idx]
-			val := s.expand(arg[idx+1:])
+		idx := strings.IndexByte(arg, '=')
+		if idx > 0 {
+			key, val := arg[:idx], s.expand(arg[idx+1:])
 			s.env[key] = val
 			os.Setenv(key, val)
-		} else {
-			if val, ok := s.env[arg]; ok {
-				os.Setenv(arg, val)
-			}
+			continue
+		}
+		if val, ok := s.env[arg]; ok {
+			os.Setenv(arg, val)
 		}
 	}
-	return nil
-}
-
-func (s *Shell) history() error {
-	for i, cmd := range s.hist {
-		fmt.Printf("%4d  %s\n", i+1, cmd)
-	}
-	return nil
 }

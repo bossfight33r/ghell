@@ -2,9 +2,6 @@ package shell
 
 import "strings"
 
-// tokenize splits a raw command string into tokens respecting single and
-// double quotes. Variables are expanded in unquoted and double-quoted
-// sections; single-quoted content is kept literal.
 func (s *Shell) tokenize(raw string) []string {
 	var tokens []string
 	var cur strings.Builder
@@ -26,15 +23,14 @@ func (s *Shell) tokenize(raw string) []string {
 
 		case ch == '"':
 			i++
-			var inner strings.Builder
+			start := i
 			for i < len(raw) && raw[i] != '"' {
-				inner.WriteByte(raw[i])
 				i++
 			}
+			cur.WriteString(s.expand(raw[start:i]))
 			if i < len(raw) {
 				i++
 			}
-			cur.WriteString(s.expand(inner.String()))
 
 		case ch == ' ' || ch == '\t':
 			if cur.Len() > 0 {
@@ -64,8 +60,6 @@ type step struct {
 	op  string
 }
 
-// splitAtOps splits input on &&, || and ; operators outside of quotes.
-// Single | is left intact for splitPipeline to handle.
 func splitAtOps(input string) []step {
 	var steps []step
 	var cur strings.Builder
@@ -75,10 +69,9 @@ func splitAtOps(input string) []step {
 		ch := input[i]
 
 		if ch == '\'' || ch == '"' {
-			quote := ch
 			cur.WriteByte(ch)
 			i++
-			for i < len(input) && input[i] != quote {
+			for i < len(input) && input[i] != ch {
 				cur.WriteByte(input[i])
 				i++
 			}
@@ -89,22 +82,18 @@ func splitAtOps(input string) []step {
 			continue
 		}
 
-		if ch == '&' && i+1 < len(input) && input[i+1] == '&' {
-			steps = append(steps, step{cmd: strings.TrimSpace(cur.String()), op: "&&"})
-			cur.Reset()
-			i += 2
-			continue
-		}
-
-		if ch == '|' && i+1 < len(input) && input[i+1] == '|' {
-			steps = append(steps, step{cmd: strings.TrimSpace(cur.String()), op: "||"})
-			cur.Reset()
-			i += 2
-			continue
+		if i+1 < len(input) {
+			pair := input[i : i+2]
+			if pair == "&&" || pair == "||" {
+				steps = append(steps, step{strings.TrimSpace(cur.String()), pair})
+				cur.Reset()
+				i += 2
+				continue
+			}
 		}
 
 		if ch == ';' {
-			steps = append(steps, step{cmd: strings.TrimSpace(cur.String()), op: ";"})
+			steps = append(steps, step{strings.TrimSpace(cur.String()), ";"})
 			cur.Reset()
 			i++
 			continue
@@ -115,12 +104,11 @@ func splitAtOps(input string) []step {
 	}
 
 	if last := strings.TrimSpace(cur.String()); last != "" {
-		steps = append(steps, step{cmd: last, op: ""})
+		steps = append(steps, step{last, ""})
 	}
 	return steps
 }
 
-// splitPipeline splits on | outside of quotes.
 func splitPipeline(input string) []string {
 	var stages []string
 	var cur strings.Builder
@@ -130,10 +118,9 @@ func splitPipeline(input string) []string {
 		ch := input[i]
 
 		if ch == '\'' || ch == '"' {
-			quote := ch
 			cur.WriteByte(ch)
 			i++
-			for i < len(input) && input[i] != quote {
+			for i < len(input) && input[i] != ch {
 				cur.WriteByte(input[i])
 				i++
 			}

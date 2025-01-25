@@ -20,52 +20,45 @@ func New() *Shell {
 	}
 	return &Shell{
 		cwd:    cwd,
-		env:    make(map[string]string),
+		env:    map[string]string{},
 		jstore: newJobStore(),
 	}
 }
 
-func (s *Shell) Cwd() string {
-	return s.cwd
-}
+func (s *Shell) Cwd() string { return s.cwd }
 
 func (s *Shell) Execute(input string) error {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil
 	}
-
 	s.hist = append(s.hist, input)
 
-	steps := splitAtOps(input)
 	skip := false
-
-	for _, st := range steps {
+	for _, st := range splitAtOps(input) {
 		if st.cmd != "" && !skip {
-			if err := s.runStep(st.cmd); err != nil {
+			if err := s.run(st.cmd); err != nil {
 				if err == ErrExit {
 					return err
 				}
 			}
 		}
-
 		switch st.op {
 		case "&&":
 			skip = s.lastRC != 0
 		case "||":
 			skip = s.lastRC == 0
-		case ";", "":
+		default:
 			skip = false
 		}
 	}
-
 	return nil
 }
 
-func (s *Shell) runStep(input string) error {
+func (s *Shell) run(input string) error {
 	if isAssignment(input) {
-		parts := strings.SplitN(input, "=", 2)
-		s.env[parts[0]] = s.expand(parts[1])
+		k, v, _ := strings.Cut(input, "=")
+		s.env[k] = s.expand(v)
 		s.lastRC = 0
 		return nil
 	}

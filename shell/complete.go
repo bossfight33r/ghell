@@ -11,112 +11,97 @@ import (
 var builtinNames = []string{"cd", "pwd", "exit", "history", "export", "jobs"}
 
 type completer struct {
-	sh       *Shell
 	pathCmds []string
 }
 
 func (s *Shell) Completer() readline.AutoCompleter {
-	return &completer{sh: s}
+	return &completer{}
 }
 
 func (c *completer) Do(line []rune, pos int) ([][]rune, int) {
-	lineStr := string(line[:pos])
-	fields := strings.Fields(lineStr)
-	endsWithSpace := len(lineStr) > 0 && (lineStr[len(lineStr)-1] == ' ' || lineStr[len(lineStr)-1] == '\t')
+	str := string(line[:pos])
+	fields := strings.Fields(str)
+	endsSpace := len(str) > 0 && (str[len(str)-1] == ' ' || str[len(str)-1] == '\t')
 
-	var prefix string
-	if !endsWithSpace && len(fields) > 0 {
+	prefix := ""
+	if !endsSpace && len(fields) > 0 {
 		prefix = fields[len(fields)-1]
 	}
 
-	firstWord := len(fields) == 0 || (len(fields) == 1 && !endsWithSpace)
-
-	var candidates []string
-	if firstWord {
-		candidates = c.commands(prefix)
+	var matches []string
+	if len(fields) == 0 || (len(fields) == 1 && !endsSpace) {
+		matches = c.commands(prefix)
 	} else {
-		candidates = c.files(prefix)
+		matches = c.files(prefix)
 	}
 
-	result := make([][]rune, 0, len(candidates))
-	for _, cand := range candidates {
-		result = append(result, []rune(cand))
+	res := make([][]rune, len(matches))
+	for i, m := range matches {
+		res[i] = []rune(m)
 	}
-	return result, len([]rune(prefix))
+	return res, len([]rune(prefix))
 }
 
 func (c *completer) commands(prefix string) []string {
-	c.loadPathCmds()
+	if c.pathCmds == nil {
+		seen := map[string]bool{}
+		for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+			ents, err := os.ReadDir(dir)
+			if err != nil {
+				continue
+			}
+			for _, e := range ents {
+				name := e.Name()
+				if !e.IsDir() && !seen[name] {
+					seen[name] = true
+					c.pathCmds = append(c.pathCmds, name)
+				}
+			}
+		}
+	}
 
-	seen := make(map[string]bool)
 	var out []string
-
 	for _, b := range builtinNames {
-		if strings.HasPrefix(b, prefix) && !seen[b] {
+		if strings.HasPrefix(b, prefix) {
 			out = append(out, b)
-			seen[b] = true
 		}
 	}
 	for _, cmd := range c.pathCmds {
-		if strings.HasPrefix(cmd, prefix) && !seen[cmd] {
+		if strings.HasPrefix(cmd, prefix) {
 			out = append(out, cmd)
-			seen[cmd] = true
 		}
 	}
 	return out
 }
 
-func (c *completer) loadPathCmds() {
-	if c.pathCmds != nil {
-		return
-	}
-	seen := make(map[string]bool)
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !e.IsDir() && !seen[e.Name()] {
-				c.pathCmds = append(c.pathCmds, e.Name())
-				seen[e.Name()] = true
-			}
-		}
-	}
-}
-
 func (c *completer) files(prefix string) []string {
-	expanded := prefix
-	if prefix == "~" || strings.HasPrefix(prefix, "~/") {
+	p := prefix
+	if strings.HasPrefix(p, "~/") || p == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
-			if prefix == "~" {
-				expanded = home
+			if p == "~" {
+				p = home
 			} else {
-				expanded = home + prefix[1:]
+				p = home + p[1:]
 			}
 		}
 	}
 
-	dir := "."
-	base := expanded
-
-	if strings.Contains(expanded, "/") {
-		if strings.HasSuffix(expanded, "/") {
-			dir = expanded
-			base = ""
+	dir, base := ".", p
+	if strings.Contains(p, "/") {
+		if strings.HasSuffix(p, "/") {
+			dir, base = p, ""
 		} else {
-			dir = filepath.Dir(expanded)
-			base = filepath.Base(expanded)
+			dir, base = filepath.Dir(p), filepath.Base(p)
 		}
 	}
 
-	entries, err := os.ReadDir(dir)
+	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
 
 	var out []string
-	for _, e := range entries {
+	for _, e := range ents {
 		if !strings.HasPrefix(e.Name(), base) {
 			continue
 		}
@@ -128,7 +113,7 @@ func (c *completer) files(prefix string) []string {
 			full += "/"
 		}
 		if strings.HasPrefix(prefix, "~/") {
-			if home, err := os.UserHomeDir(); err == nil {
+			if home, _ := os.UserHomeDir(); home != "" {
 				full = "~" + strings.TrimPrefix(full, home)
 			}
 		}
