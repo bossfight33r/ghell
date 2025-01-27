@@ -8,7 +8,7 @@ import (
 	"github.com/chzyer/readline"
 )
 
-var builtinNames = []string{"cd", "pwd", "exit", "history", "export", "jobs"}
+var builtinNames = []string{"cd", "pwd", "exit", "history", "export", "jobs", "set", "source", "alias", "unalias"}
 
 type completer struct {
 	pathCmds []string

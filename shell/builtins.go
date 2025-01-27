@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -37,6 +38,50 @@ func (s *Shell) tryBuiltin(args []string) (bool, error) {
 		return true, nil
 	case "pwd":
 		fmt.Println(s.cwd)
+		s.lastRC = 0
+		return true, nil
+	case "set":
+		for _, arg := range args[1:] {
+			switch arg {
+			case "-e":
+				s.exitOnError = true
+			case "+e":
+				s.exitOnError = false
+			}
+		}
+		s.lastRC = 0
+		return true, nil
+	case "source", ".":
+		if len(args) < 2 {
+			return true, fmt.Errorf("source: filename argument required")
+		}
+		s.lastRC = 0
+		return true, s.sourceFile(args[1])
+	case "alias":
+		if len(args) == 1 {
+			keys := make([]string, 0, len(s.aliases))
+			for k := range s.aliases {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Printf("alias %s='%s'\n", k, s.aliases[k])
+			}
+			s.lastRC = 0
+			return true, nil
+		}
+		for _, arg := range args[1:] {
+			idx := strings.IndexByte(arg, '=')
+			if idx > 0 {
+				s.aliases[arg[:idx]] = arg[idx+1:]
+			}
+		}
+		s.lastRC = 0
+		return true, nil
+	case "unalias":
+		for _, arg := range args[1:] {
+			delete(s.aliases, arg)
+		}
 		s.lastRC = 0
 		return true, nil
 	}
