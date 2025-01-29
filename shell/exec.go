@@ -1,10 +1,12 @@
 package shell
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -90,4 +92,29 @@ func (s *Shell) runCmd(cmd command, stdin io.Reader, stdout io.Writer, bg bool) 
 
 	s.lastRC = 0
 	return nil
+}
+
+func (s *Shell) runCapture(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	var buf bytes.Buffer
+	prevRC := s.lastRC
+
+	stages := splitPipeline(raw)
+	if len(stages) == 1 {
+		cmd := s.parseCommand(stages[0])
+		if len(cmd.args) > 0 {
+			if ok, _ := s.tryBuiltin(cmd.args); !ok {
+				s.runCmd(cmd, os.Stdin, &buf, false)
+			}
+		}
+	} else {
+		s.runPipelineWriter(stages, false, &buf)
+	}
+
+	s.lastRC = prevRC
+	return strings.TrimRight(buf.String(), "\n")
 }

@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -37,12 +38,48 @@ func (s *Shell) expand(token string) string {
 			break
 		}
 
+		// $(cmd) — command substitution
+		if token[i] == '(' {
+			depth := 1
+			j := i + 1
+			for j < len(token) && depth > 0 {
+				if token[j] == '(' {
+					depth++
+				} else if token[j] == ')' {
+					depth--
+				}
+				j++
+			}
+			b.WriteString(s.runCapture(token[i+1 : j-1]))
+			i = j
+			continue
+		}
+
+		// ${VAR}, ${VAR:-default}, ${VAR:+alt}, ${VAR:?msg}, ${#VAR}
+		if token[i] == '{' {
+			j := i + 1
+			depth := 1
+			for j < len(token) && depth > 0 {
+				if token[j] == '{' {
+					depth++
+				} else if token[j] == '}' {
+					depth--
+				}
+				j++
+			}
+			b.WriteString(s.expandBrace(token[i+1 : j-1]))
+			i = j
+			continue
+		}
+
+		// $?
 		if token[i] == '?' {
 			b.WriteString(strconv.Itoa(s.lastRC))
 			i++
 			continue
 		}
 
+		// $VAR
 		j := i
 		for j < len(token) {
 			ch := rune(token[j])
@@ -54,21 +91,58 @@ func (s *Shell) expand(token string) string {
 			}
 			j++
 		}
-
 		if j == i {
 			b.WriteByte('$')
 			continue
 		}
-
-		name := token[i:j]
-		if val, ok := s.env[name]; ok {
-			b.WriteString(val)
-		} else {
-			b.WriteString(os.Getenv(name))
-		}
+		b.WriteString(s.getVar(token[i:j]))
 		i = j
 	}
 	return b.String()
+}
+
+func (s *Shell) getVar(name string) string {
+	if val, ok := s.env[name]; ok {
+		return val
+	}
+	return os.Getenv(name)
+}
+
+func (s *Shell) expandBrace(expr string) string {
+	// ${#VAR} — string length
+	if strings.HasPrefix(expr, "#") {
+		return strconv.Itoa(len(s.getVar(expr[1:])))
+	}
+
+	// ${VAR:-default}, ${VAR:+alt}, ${VAR:?msg}
+	for _, op := range []string{":-", ":+", ":?"} {
+		idx := strings.Index(expr, op)
+		if idx <= 0 {
+			continue
+		}
+		name := expr[:idx]
+		arg := expr[idx+len(op):]
+		val := s.getVar(name)
+		switch op {
+		case ":-":
+			if val == "" {
+				return s.expand(arg)
+			}
+			return val
+		case ":+":
+			if val != "" {
+				return s.expand(arg)
+			}
+			return ""
+		case ":?":
+			if val == "" {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", name, arg)
+			}
+			return val
+		}
+	}
+
+	return s.getVar(expr)
 }
 
 func isAssignment(s string) bool {

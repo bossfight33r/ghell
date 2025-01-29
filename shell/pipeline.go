@@ -2,6 +2,7 @@ package shell
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -9,6 +10,10 @@ import (
 )
 
 func (s *Shell) runPipeline(stages []string, bg bool) error {
+	return s.runPipelineWriter(stages, bg, os.Stdout)
+}
+
+func (s *Shell) runPipelineWriter(stages []string, bg bool, finalOut io.Writer) error {
 	cmds := make([]command, len(stages))
 	for i, stage := range stages {
 		cmds[i] = s.parseCommand(stage)
@@ -58,14 +63,15 @@ func (s *Shell) runPipeline(stages []string, bg bool) error {
 			}
 		}
 
-		if cmd.outFile != "" && i == len(cmds)-1 {
+		isLast := i == len(cmds)-1
+		if cmd.outFile != "" && isLast {
 			f, err := os.Create(cmd.outFile)
 			if err != nil {
 				return fmt.Errorf("%s: %w", cmd.args[0], err)
 			}
 			toClose = append(toClose, f)
 			p.Stdout = f
-		} else if cmd.appFile != "" && i == len(cmds)-1 {
+		} else if cmd.appFile != "" && isLast {
 			f, err := os.OpenFile(cmd.appFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf("%s: %w", cmd.args[0], err)
@@ -76,7 +82,7 @@ func (s *Shell) runPipeline(stages []string, bg bool) error {
 			p.Stdout = writers[i]
 			toClose = append(toClose, writers[i])
 		} else {
-			p.Stdout = os.Stdout
+			p.Stdout = finalOut
 		}
 
 		procs[i] = p
