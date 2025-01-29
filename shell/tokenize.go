@@ -41,8 +41,26 @@ func (s *Shell) tokenize(raw string) []string {
 
 		default:
 			j := i
-			for j < len(raw) && raw[j] != ' ' && raw[j] != '\t' && raw[j] != '\'' && raw[j] != '"' {
-				j++
+			for j < len(raw) {
+				c := raw[j]
+				if c == ' ' || c == '\t' || c == '\'' || c == '"' {
+					break
+				}
+				// treat $(...) as one unit so spaces inside don't split the token
+				if c == '$' && j+1 < len(raw) && raw[j+1] == '(' {
+					j += 2
+					depth := 1
+					for j < len(raw) && depth > 0 {
+						if raw[j] == '(' {
+							depth++
+						} else if raw[j] == ')' {
+							depth--
+						}
+						j++
+					}
+				} else {
+					j++
+				}
 			}
 			cur.WriteString(s.expand(raw[i:j]))
 			i = j
@@ -77,6 +95,23 @@ func splitAtOps(input string) []step {
 			}
 			if i < len(input) {
 				cur.WriteByte(input[i])
+				i++
+			}
+			continue
+		}
+
+		// skip $(...) so | or ; inside doesn't confuse the splitter
+		if ch == '$' && i+1 < len(input) && input[i+1] == '(' {
+			cur.WriteByte(ch)
+			i++
+			depth := 1
+			for i < len(input) && depth > 0 {
+				cur.WriteByte(input[i])
+				if input[i] == '(' {
+					depth++
+				} else if input[i] == ')' {
+					depth--
+				}
 				i++
 			}
 			continue
@@ -126,6 +161,23 @@ func splitPipeline(input string) []string {
 			}
 			if i < len(input) {
 				cur.WriteByte(input[i])
+				i++
+			}
+			continue
+		}
+
+		// skip $(...) so the | inside isn't treated as a pipeline separator
+		if ch == '$' && i+1 < len(input) && input[i+1] == '(' {
+			cur.WriteByte(ch)
+			i++
+			depth := 1
+			for i < len(input) && depth > 0 {
+				cur.WriteByte(input[i])
+				if input[i] == '(' {
+					depth++
+				} else if input[i] == ')' {
+					depth--
+				}
 				i++
 			}
 			continue

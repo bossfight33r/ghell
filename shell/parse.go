@@ -41,5 +41,6 @@ func (s *Shell) parseCommand(raw string) command {
 		}
 	}
 
+	cmd.args = expandGlobs(cmd.args)
 	return cmd
 }
