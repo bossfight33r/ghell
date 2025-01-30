@@ -78,6 +78,13 @@ func (s *Shell) tryBuiltin(args []string) (bool, error) {
 		}
 		s.lastRC = 0
 		return true, nil
+	case "unset":
+		for _, arg := range args[1:] {
+			delete(s.env, arg)
+			os.Unsetenv(arg)
+		}
+		s.lastRC = 0
+		return true, nil
 	case "unalias":
 		for _, arg := range args[1:] {
 			delete(s.aliases, arg)
@@ -100,14 +107,19 @@ func (s *Shell) cd(args []string) error {
 		target = home
 	case 1:
 		if args[0] == "-" {
-			fmt.Println("cd -: not supported")
-			return nil
+			if s.prevDir == "" {
+				return fmt.Errorf("cd: OLDPWD not set")
+			}
+			target = s.prevDir
+			fmt.Println(target)
+		} else {
+			target = args[0]
 		}
-		target = args[0]
 	default:
 		return fmt.Errorf("cd: too many args")
 	}
 
+	prev := s.cwd
 	if err := os.Chdir(target); err != nil {
 		return fmt.Errorf("cd: %s", err)
 	}
@@ -115,6 +127,7 @@ func (s *Shell) cd(args []string) error {
 	if err != nil {
 		return err
 	}
+	s.prevDir = prev
 	s.cwd = cwd
 	return nil
 }

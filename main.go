@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -66,8 +67,14 @@ func main() {
 
 	sh := shell.New()
 
+	home, _ := os.UserHomeDir()
+	histFile := filepath.Join(home, ".ghell_history")
+	sh.LoadHistory(histFile)
+
 	rl, err := readline.NewEx(&readline.Config{
 		AutoComplete: sh.Completer(),
+		HistoryFile:  histFile,
+		HistoryLimit: 1000,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

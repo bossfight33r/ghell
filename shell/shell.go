@@ -9,6 +9,7 @@ import (
 
 type Shell struct {
 	cwd         string
+	prevDir     string
 	hist        []string
 	env         map[string]string
 	aliases     map[string]string
@@ -31,6 +32,19 @@ func New() *Shell {
 }
 
 func (s *Shell) Cwd() string { return s.cwd }
+
+func (s *Shell) LoadHistory(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			s.hist = append(s.hist, line)
+		}
+	}
+}
 
 func (s *Shell) Prompt() string {
 	ps1 := s.env["PS1"]
